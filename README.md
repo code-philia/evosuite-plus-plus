@@ -57,19 +57,19 @@ A more systematic way to resolve the problem is to use customized maven settings
 
 ```
 <profiles>
-	<profile>
+    <profile>
       <id>compiler</id>
         <properties>
           <java.home>C:\Program Files\Java\jdk1.8.0_202\bin</java.home>
         </properties>
- </profile>
+    </profile>
 <profiles>
 <activeProfiles>
   <activeProfile>compiler</activeProfile>
 </activeProfiles>
 ```
 
-Then, right click the project >> Maven >> Ipdate Project ...
+Then, right click the project >> Maven >> Update Project ...
 By this means, the problem can be fixed.
 
 ## Compilation
