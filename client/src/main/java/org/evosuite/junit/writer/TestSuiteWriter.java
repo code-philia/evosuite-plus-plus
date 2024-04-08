@@ -25,7 +25,9 @@ package org.evosuite.junit.writer;
 import org.evosuite.Properties;
 import org.evosuite.Properties.Criterion;
 import org.evosuite.Properties.OutputGranularity;
+import org.evosuite.TestGenerationContext;
 import org.evosuite.TimeController;
+import org.evosuite.coverage.branch.BranchPool;
 import org.evosuite.coverage.dataflow.DefUseCoverageTestFitness;
 import org.evosuite.junit.naming.methods.CoverageGoalTestNameGenerationStrategy;
 import org.evosuite.junit.naming.methods.NumberedTestNameGenerationStrategy;
@@ -37,6 +39,7 @@ import org.evosuite.runtime.testdata.EnvironmentDataList;
 import org.evosuite.testcase.*;
 import org.evosuite.testcase.execution.CodeUnderTestException;
 import org.evosuite.testcase.execution.ExecutionResult;
+import org.evosuite.testcase.execution.ExecutionTrace;
 import org.evosuite.testcase.execution.TestCaseExecutor;
 import org.evosuite.utils.ArrayUtil;
 import org.evosuite.utils.FileIOUtils;
@@ -51,6 +54,7 @@ import javax.swing.*;
 import java.io.File;
 import java.io.PrintStream;
 import java.util.*;
+import java.util.stream.Collectors;
 
 import static org.evosuite.junit.writer.TestSuiteWriterUtils.*;
 
@@ -605,6 +609,28 @@ public class TestSuiteWriter implements Opcodes {
         return "}" + NEWLINE;
     }
 
+    private void appendCoveredSet(StringBuilder builder, String title, Collection<Integer> set) {
+        builder.append(METHOD_SPACE);
+        builder.append(String.format("// %s: [", title));
+        String concatLines = String.join(", ", set.stream().map(String::valueOf).collect(Collectors.toList()));
+        builder.append(concatLines);
+        builder.append("]");
+        builder.append(NEWLINE);
+    }
+
+    private int getLineOfBranch(int branchId) {
+        return BranchPool.getInstance(TestGenerationContext.getInstance().getClassLoaderForSUT())
+                .getBranch(branchId).getInstruction().getLineNumber();
+    }
+
+    private void appendLines(StringBuilder builder, List<String> lines, int indent) {
+        String indentString = new String(new char[indent]).replace('\0', ' ');
+        String outputLines = lines.stream()
+                .map(line -> "//" + indentString + line)
+                .collect(Collectors.joining(NEWLINE));
+        builder.append(outputLines);
+        builder.append(NEWLINE);
+    }
 
     /**
      * Convert one test case to a Java method
@@ -626,6 +652,20 @@ public class TestSuiteWriter implements Opcodes {
             builder.append("//");
             builder.append(testInfo);
             builder.append(NEWLINE);
+        }
+
+        if (Properties.WITH_COVERAGE_INFO) {
+            // Append coverage and path information
+            ExecutionTrace trace = result.getTrace();
+            Set<Integer> lines = trace.getCoveredLines();
+
+            Set<Integer> coveredTrueBranches = trace.getCoveredTrueBranches();
+            Set<Integer> coveredFalseBranches = trace.getCoveredFalseBranches();
+            List<Integer> trueBranchLines = coveredTrueBranches.stream().map(bID -> getLineOfBranch(bID.intValue())).collect(Collectors.toList());
+            List<Integer> falseBranchLines = coveredFalseBranches.stream().map(bID -> getLineOfBranch(bID.intValue())).collect(Collectors.toList());
+            appendCoveredSet(builder, "Covered lines", lines);
+            appendCoveredSet(builder, "True branch lines: ", trueBranchLines);
+            appendCoveredSet(builder, "False branches lines: ", falseBranchLines);
         }
 
         // Get the test method name generated in TestNameGenerator

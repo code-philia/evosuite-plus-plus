@@ -1647,6 +1647,8 @@ public class Properties {
 	@Parameter(key = "is_running_a_system_test", group = "Runtime", description = "Specify that a system test is running. To be used only for debugging purposes")
 	public static volatile boolean IS_RUNNING_A_SYSTEM_TEST = false;
 
+	@Parameter(key = "with_coverage_info", group = "Output", description = "Whether to append covered lines and branches information before each test case")
+	public static volatile boolean WITH_COVERAGE_INFO = false;
 
 
 	// ---------------------------------------------------------------
