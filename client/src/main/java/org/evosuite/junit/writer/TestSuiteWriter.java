@@ -28,6 +28,7 @@ import org.evosuite.Properties.OutputGranularity;
 import org.evosuite.TestGenerationContext;
 import org.evosuite.TimeController;
 import org.evosuite.coverage.branch.BranchPool;
+import org.evosuite.coverage.branch.BranchUtil;
 import org.evosuite.coverage.dataflow.DefUseCoverageTestFitness;
 import org.evosuite.junit.naming.methods.CoverageGoalTestNameGenerationStrategy;
 import org.evosuite.junit.naming.methods.NumberedTestNameGenerationStrategy;
@@ -53,6 +54,7 @@ import javax.swing.*;
 
 import java.io.File;
 import java.io.PrintStream;
+import java.io.Serializable;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -609,18 +611,13 @@ public class TestSuiteWriter implements Opcodes {
         return "}" + NEWLINE;
     }
 
-    private void appendCoveredSet(StringBuilder builder, String title, Collection<Integer> set) {
+    private void appendCoveredSet(StringBuilder builder, String title, Collection<? extends Serializable> set) {
         builder.append(METHOD_SPACE);
         builder.append(String.format("// %s: [", title));
         String concatLines = String.join(", ", set.stream().map(String::valueOf).collect(Collectors.toList()));
         builder.append(concatLines);
         builder.append("]");
         builder.append(NEWLINE);
-    }
-
-    private int getLineOfBranch(int branchId) {
-        return BranchPool.getInstance(TestGenerationContext.getInstance().getClassLoaderForSUT())
-                .getBranch(branchId).getInstruction().getLineNumber();
     }
 
     private void appendLines(StringBuilder builder, List<String> lines, int indent) {
@@ -661,8 +658,10 @@ public class TestSuiteWriter implements Opcodes {
 
             Set<Integer> coveredTrueBranches = trace.getCoveredTrueBranches();
             Set<Integer> coveredFalseBranches = trace.getCoveredFalseBranches();
-            List<Integer> trueBranchLines = coveredTrueBranches.stream().map(bID -> getLineOfBranch(bID.intValue())).collect(Collectors.toList());
-            List<Integer> falseBranchLines = coveredFalseBranches.stream().map(bID -> getLineOfBranch(bID.intValue())).collect(Collectors.toList());
+            Set<String> coveredMethods = trace.getCoveredMethods();
+            List<Integer> trueBranchLines = coveredTrueBranches.stream().map(bID -> BranchUtil.getLineOfBranchId(bID.intValue())).collect(Collectors.toList());
+            List<Integer> falseBranchLines = coveredFalseBranches.stream().map(bID -> BranchUtil.getLineOfBranchId(bID.intValue())).collect(Collectors.toList());
+            appendCoveredSet(builder, "Covered methods", coveredMethods);
             appendCoveredSet(builder, "Covered lines", lines);
             appendCoveredSet(builder, "True branch lines: ", trueBranchLines);
             appendCoveredSet(builder, "False branches lines: ", falseBranchLines);
