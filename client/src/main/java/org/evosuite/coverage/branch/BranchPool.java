@@ -610,6 +610,10 @@ public class BranchPool {
 		return branchIdMap.values();
 	}
 
+	public int getAllBranchCount() {
+		return branchIdMap.size();
+	}
+
 	/**
 	 * Returns a set with all unique methodNames of methods without Branches.
 	 * 

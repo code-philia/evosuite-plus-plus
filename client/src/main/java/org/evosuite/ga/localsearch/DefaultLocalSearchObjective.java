@@ -108,5 +108,9 @@ public class DefaultLocalSearchObjective<T extends Chromosome> implements LocalS
 		throw new UnsupportedOperationException("Not implemented for default objective");
 	}
 
+	@Override
+	public String getLastFitnessStatus() {
+		throw new UnsupportedOperationException("Not implemented for default objective");
+	}
 
 }

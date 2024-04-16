@@ -94,4 +94,5 @@ public interface LocalSearchObjective<T extends Chromosome> {
 	 */
 	public List<FitnessFunction<? extends Chromosome>> getFitnessFunctions();
 
+	public String getLastFitnessStatus();
 }

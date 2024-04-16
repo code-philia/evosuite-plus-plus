@@ -491,7 +491,11 @@ public class BranchCoverageSuiteFitness extends TestSuiteFitnessFunction {
 	 * Max branch coverage value
 	 */
 	public int getMaxValue() {
-		return  totalBranches * 2 + totalMethods;
+		return totalBranches * 2 + totalMethods;
+	}
+
+	public String getLastCoverage() {
+		return String.format("B:%d/%d M:%d/%D .2lf%", maxCoveredBranches, totalBranches * 2, maxCoveredMethods, totalMethods * 2, bestFitness);
 	}
 
 	/**

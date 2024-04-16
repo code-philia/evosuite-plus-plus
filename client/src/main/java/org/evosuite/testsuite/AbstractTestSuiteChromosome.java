@@ -225,7 +225,7 @@ public abstract class AbstractTestSuiteChromosome<T extends ExecutableChromosome
 	 * Apply mutation on test suite level
 	 */
 	@Override
-	public void mutate() {
+	public void mutate() {		// mutate each test (by a probability distribution) and add new tests (by probability)
 		boolean changed = false;
 
 		MutationDistribution probabilityDistribution = MutationDistribution.getMutationDistribution(tests.size());

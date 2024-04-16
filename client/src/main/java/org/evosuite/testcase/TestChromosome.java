@@ -76,7 +76,21 @@ public class TestChromosome extends ExecutableChromosome {
 	private static final List<SecondaryObjective<TestChromosome>> secondaryObjectives = new ArrayList<SecondaryObjective<TestChromosome>>();
 
 	private double legitimacyDistance = 0;
+
+	private long testID = 0;
+
+	private static long countTestID = 0;
+
+	public TestChromosome() {
+		super();
+		countTestID += 1;
+		testID = countTestID;
+	}
 	
+	public String getTestID() {
+		return String.format("%08d", testID);
+	}
+
 	public Statement getStatementReportingException(){
 		ExecutionResult result = TestCaseExecutor.runTest(this.getTestCase());
 		this.setLastExecutionResult(result);
@@ -329,7 +343,7 @@ public class TestChromosome extends ExecutableChromosome {
 	 * Each statement is mutated with probability 1/l
 	 */
 	@Override
-	public void mutate() {
+	public void mutate() {		// mutate a test by orderedly delete -> change -> insert, each step with a probability
 		boolean changed = false;
 		mutationHistory.clear();
 

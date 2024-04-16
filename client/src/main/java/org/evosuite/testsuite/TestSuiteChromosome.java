@@ -82,6 +82,9 @@ public class TestSuiteChromosome extends AbstractTestSuiteChromosome<TestChromos
 	
 	private long intializationTime;
 
+	private long testSuiteID = 0;
+
+	private static long countTestSuiteID = 0;
 
 	/**
 	 * Add an additional secondary objective to the end of the list of
@@ -140,6 +143,12 @@ public class TestSuiteChromosome extends AbstractTestSuiteChromosome<TestChromos
 	 */
 	public TestSuiteChromosome() {
 		super();
+		countTestSuiteID += 1;
+		testSuiteID = countTestSuiteID;
+	}
+
+	public String getTestSuiteID() {
+		return String.format("%08d", testSuiteID);
 	}
 
 	/**
@@ -152,6 +161,8 @@ public class TestSuiteChromosome extends AbstractTestSuiteChromosome<TestChromos
 	 */
 	public TestSuiteChromosome(ChromosomeFactory<TestChromosome> testChromosomeFactory) {
 		super(testChromosomeFactory);
+		countTestSuiteID += 1;
+		testSuiteID = countTestSuiteID;
 	}
 
 	/**
@@ -164,6 +175,8 @@ public class TestSuiteChromosome extends AbstractTestSuiteChromosome<TestChromos
 	 */
 	protected TestSuiteChromosome(TestSuiteChromosome source) {
 		super(source);
+		countTestSuiteID += 1;
+		testSuiteID = countTestSuiteID;
 	}
 
 	/**

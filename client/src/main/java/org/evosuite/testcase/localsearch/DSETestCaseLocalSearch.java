@@ -185,7 +185,7 @@ public class DSETestCaseLocalSearch extends TestCaseLocalSearch {
 			return false;
 		}
  
-		if (!hasUncoveredBranch(test, uncoveredBranches)) {
+		if (!hasUncoveredBranch(test, uncoveredBranches)) {		// if the test reaches no negate of uncovered branches
 			/*
 			 * As there are uncovered branches, but none is reached by this
 			 * test, the DSE is skipped and we return false (no DSE improvement)
@@ -193,7 +193,7 @@ public class DSETestCaseLocalSearch extends TestCaseLocalSearch {
 			return false;
 		}
 
-		Set<Integer> targetStatementIndexes = collectStatementIndexesWithSymbolicVariables(test, objective);
+		Set<Integer> targetStatementIndexes = collectStatementIndexesWithSymbolicVariables(test, objective);	// all statements whose symbolic value (return value) is used anywhere in the testcase
 
 		final boolean fitnessHasImproved;
 		if (targetStatementIndexes.isEmpty()) {
@@ -206,9 +206,9 @@ public class DSETestCaseLocalSearch extends TestCaseLocalSearch {
 			if (suite != null) {
 				dseTestGenerator = new DSETestGenerator(suite);
 			} else {
-				dseTestGenerator = new DSETestGenerator();
+				dseTestGenerator = new DSETestGenerator();	
 			}
-			final TestChromosome newTest = dseTestGenerator.generateNewTest(test, targetStatementIndexes, objective);
+			final TestChromosome newTest = dseTestGenerator.generateNewTest(test, targetStatementIndexes, objective);	// Directly change the inner test case through test.setTestCase() here
 			if (newTest != null) {
 				fitnessHasImproved = true;
 			} else {

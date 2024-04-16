@@ -26,14 +26,18 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import org.evosuite.CoverageProgressGetter;
 import org.evosuite.Properties;
 import org.evosuite.StatisticChecker;
 import org.evosuite.TimeController;
+import org.evosuite.coverage.branch.Branch;
+import org.evosuite.coverage.branch.BranchCoverageCase;
 import org.evosuite.coverage.branch.BranchCoverageFactory;
 import org.evosuite.coverage.branch.BranchCoverageGoal;
 import org.evosuite.coverage.branch.BranchCoverageTestFitness;
+import org.evosuite.coverage.branch.BranchUtil;
 import org.evosuite.ga.Chromosome;
 import org.evosuite.ga.ChromosomeFactory;
 import org.evosuite.ga.ConstructionFailedException;
@@ -53,6 +57,8 @@ import org.evosuite.utils.Randomness;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import javafx.util.Pair;
+
 /**
  * Implementation of steady state GA
  * 
@@ -65,6 +71,8 @@ public class MonotonicGA<T extends Chromosome> extends GeneticAlgorithm<T> imple
 	protected ReplacementFunction replacementFunction;
 
 	private final Logger logger = LoggerFactory.getLogger(MonotonicGA.class);
+
+	private Map<Integer, List<Pair<Integer, BranchCoverageCase>>> historicalCoverage = new HashMap<>();
 
 	/**
 	 * Constructor
@@ -128,7 +136,7 @@ public class MonotonicGA<T extends Chromosome> extends GeneticAlgorithm<T> imple
 		while (!isNextPopulationFull(newGeneration) && !isFinished()) {
 			logger.debug("Generating offspring");
 
-			T parent1 = selectionFunction.select(population);
+			T parent1 = selectionFunction.select(population);	// select from sorted population by distribution (the closer to front, the more probable it is selected)
 			T parent2;
 			if (Properties.HEADLESS_CHICKEN_TEST)
 				parent2 = newRandomIndividual(); // crossover with new random
@@ -291,8 +299,7 @@ public class MonotonicGA<T extends Chromosome> extends GeneticAlgorithm<T> imple
 		if (population.isEmpty()) {
 			initializePopulation();
 			assert !population.isEmpty() : "Could not create any test";
-		}
-		else {
+		} else {
 			this.notifyIteration();
 		}
 		long t2 = System.currentTimeMillis();
@@ -300,7 +307,7 @@ public class MonotonicGA<T extends Chromosome> extends GeneticAlgorithm<T> imple
 		this.setIntializationOverhead(initializationOverhead);
 		double coverage = getBestIndividual().getCoverage();
 		this.setInitialCoverage(coverage);
-		
+
 		logger.warn("initial coverage: " + this.initialCoverage);
 		logger.warn("initialization overhead: " + this.intializationOverhead);
 
@@ -320,40 +327,42 @@ public class MonotonicGA<T extends Chromosome> extends GeneticAlgorithm<T> imple
 		Map<Integer, Integer> distributionMap = DistributionUtil.constructDistributionMap(branchGoals);
 		updateDistribution(distributionMap, true);
 
+		// printUncoveredBranches(distributionMap, branchGoals);
+		reportCoverageOfCases(branchGoals);
+		reportUncoveredBranches();
+
 		while (!isFinished()) {
 
-			
-			
 			logger.info("Population size before: " + population.size());
 			// related to Properties.ENABLE_SECONDARY_OBJECTIVE_AFTER;
 			// check the budget progress and activate a secondary criterion
 			// according to the property value.
 
 			{
-//				double bestFitnessBeforeEvolution = getBestFitness();
-//				long t00 = System.currentTimeMillis();
+				//				double bestFitnessBeforeEvolution = getBestFitness();
+				//				long t00 = System.currentTimeMillis();
 				evolve();
-//				long t11 = System.currentTimeMillis();
-//				logger.warn("evolving time " + (t11-t00));
+				//				long t11 = System.currentTimeMillis();
+				//				logger.warn("evolving time " + (t11-t00));
 				sortPopulation();
 
-//				double bestFitnessAfterEvolution = getBestFitness();
+				//				double bestFitnessAfterEvolution = getBestFitness();
 				bestFitness = getBestFitness();
 
-//				if (getFitnessFunction().isMaximizationFunction())
-//					assert (bestFitnessAfterEvolution >= (bestFitnessBeforeEvolution
-//							- DELTA)) : "best fitness before evolve()/sortPopulation() was: "
-//									+ bestFitnessBeforeEvolution + ", now best fitness is " + bestFitnessAfterEvolution;
-//				else
-//					assert (bestFitnessAfterEvolution <= (bestFitnessBeforeEvolution
-//							+ DELTA)) : "best fitness before evolve()/sortPopulation() was: "
-//									+ bestFitnessBeforeEvolution + ", now best fitness is " + bestFitnessAfterEvolution;
+				//				if (getFitnessFunction().isMaximizationFunction())
+				//					assert (bestFitnessAfterEvolution >= (bestFitnessBeforeEvolution
+				//							- DELTA)) : "best fitness before evolve()/sortPopulation() was: "
+				//									+ bestFitnessBeforeEvolution + ", now best fitness is " + bestFitnessAfterEvolution;
+				//				else
+				//					assert (bestFitnessAfterEvolution <= (bestFitnessBeforeEvolution
+				//							+ DELTA)) : "best fitness before evolve()/sortPopulation() was: "
+				//									+ bestFitnessBeforeEvolution + ", now best fitness is " + bestFitnessAfterEvolution;
 			}
 
 			{
-//				double bestFitnessBeforeLocalSearch = getBestFitness();
+				//				double bestFitnessBeforeLocalSearch = getBestFitness();
 				applyLocalSearch();
-//				double bestFitnessAfterLocalSearch = getBestFitness();
+				//				double bestFitnessAfterLocalSearch = getBestFitness();
 
 				// if (getFitnessFunction().isMaximizationFunction())
 				// assert (bestFitnessAfterLocalSearch >= (bestFitnessBeforeLocalSearch
@@ -414,6 +423,7 @@ public class MonotonicGA<T extends Chromosome> extends GeneticAlgorithm<T> imple
 			// printUncoveredBranches(distributionMap, branchGoals);
 			// printUncoveredBranches(getBestIndividual(), branchGoals);
 
+			logger.error("Iteration " + currentIteration + " finished");
 			logger.error("Best fitness: " + bestFitness + ", Coverage: " + getBestIndividual().getCoverage());
 			logger.info("Current iteration: " + currentIteration);
 			this.notifyIteration();
@@ -422,6 +432,12 @@ public class MonotonicGA<T extends Chromosome> extends GeneticAlgorithm<T> imple
 			logger.info("Best individual has fitness: " + population.get(0).getFitness());
 			logger.info("Worst individual has fitness: " + population.get(population.size() - 1).getFitness());
 
+			reportCoverageOfCases(branchGoals);
+			reportUncoveredBranches();
+			logger.error("Iteration finished with suites: [" + population.stream()
+					.map(suite -> ((TestSuiteChromosome) suite).getTestSuiteID()).collect(Collectors.joining(", "))
+					+ "]");
+			logger.error("The best suite " + ((TestSuiteChromosome) getBestIndividual()).getTestSuiteID() + " has fitness: " + getBestIndividual().getFitness());
 		}
 		// bestIndividual = getBestIndividual();
 		// if (bestIndividual != null) {
@@ -441,14 +457,14 @@ public class MonotonicGA<T extends Chromosome> extends GeneticAlgorithm<T> imple
 		Map<Integer, Double> uncoveredBranchDistribution = DistributionUtil.computeBranchDistribution(distributionMap,
 				branchGoals);
 		this.setUncoveredBranchDistribution(uncoveredBranchDistribution);
-		
-		Set<BranchCoverageGoal> missingBranchesSet = getUncoveredBranches(getBestIndividual(),branchGoals);
-		
-		List<BranchInfo> missingBranches = getMissingBranches(population,branchGoals);
-//				getBestIndividual().getMissingBranches();
+
+		Set<BranchCoverageGoal> missingBranchesSet = getUncoveredBranches(getBestIndividual(), branchGoals);
+
+		List<BranchInfo> missingBranches = getMissingBranches(population, branchGoals);
+		//				getBestIndividual().getMissingBranches();
 		this.setMissingBranches(missingBranches);
-		
-		Map<BranchInfo, String> coveredBranchWithTest = getCoveredBranchWithTest(population,branchGoals);
+
+		Map<BranchInfo, String> coveredBranchWithTest = getCoveredBranchWithTest(population, branchGoals);
 		this.setCoveredBranchWithTest(coveredBranchWithTest);
 
 		// this.setCallUninstrumentedMethod(true);
@@ -463,11 +479,175 @@ public class MonotonicGA<T extends Chromosome> extends GeneticAlgorithm<T> imple
 		this.setAvailabilityRatio(availabilityRatio);
 		this.setAvailableCalls(getAvailableCalls());
 		this.setUnavailableCalls(getUnavailableCalls());
-		
-		// archive
+
+		// archive, IMPORTANT: the ZeroFitnessCondition is calculated on all of the population, so merge the best suite with archive
+		// A NEW MERGED SUITE is added to the head of population
 		TimeController.execute(this::updateBestIndividualFromArchive, "update from archive", 5_000);
 
 		notifySearchFinished();
+		logger.error("MonotonicGA finished with suites: [" + population.stream().map(suite->((TestSuiteChromosome)suite).getTestSuiteID()).collect(Collectors.joining(", ")) + "]");
+		
+	}
+	
+	private void reportUncoveredBranches() {
+		Map<Integer, Map<Boolean, BranchCoverageCase>> tfInfo = new HashMap<>();
+		String uncoveredInfo = "Iteration " + currentIteration + ": uncovered branches:";
+		String indent = "";
+		String ANSI_RESET = "\u001B[0m";
+		String ANSI_RED = "\u001B[31m";
+		boolean hasUncoveredBranch = false;
+
+		for (Integer branchID : historicalCoverage.keySet()) {
+			List<Pair<Integer, BranchCoverageCase>> timeline = historicalCoverage.get(branchID);
+			int actualBranchId = Math.abs(branchID);
+			if (!tfInfo.containsKey(actualBranchId)) {
+				tfInfo.put(actualBranchId, new HashMap<>());
+			}
+			if (!timeline.isEmpty()) {
+				Pair<Integer, BranchCoverageCase> lastCase = timeline.get(timeline.size() - 1);
+				if (branchID >= 0) {
+					tfInfo.get(actualBranchId).put(true, lastCase.getValue());
+				} else {
+					tfInfo.get(actualBranchId).put(false, lastCase.getValue());
+				}
+			}
+		}
+
+		for (Integer branchID : tfInfo.keySet()) {
+			Map<Boolean, BranchCoverageCase> covTfCase = tfInfo.get(branchID);
+			Branch b = BranchUtil.getBranch(branchID);
+			String covInfo = "";
+			covInfo += "Branch:" + branchID + " " + b.getClassName() + ":" + b.getMethodName()
+					+ " line:" + b.getInstruction().getLineNumber() + " " + b.getInstruction().toString();
+			boolean hasUncoveredSubBranch = false;
+			boolean[] tfList = new boolean[] { true, false };
+			for (boolean tf : tfList) {
+				String tfString = tf ? "+" : "-";
+				BranchCoverageCase covCase = covTfCase.get(tf);
+				if (covCase != null && covCase.distance <= 0) {
+					continue;
+				}
+
+				hasUncoveredSubBranch = true;
+				if (covCase == null) {
+					covInfo += "\n" + indent + tfString;
+					covInfo += " " + ANSI_RED + "UNREACHED" + ANSI_RESET;
+				} else if (covCase.distance > 0) {
+					covInfo += "\n" + indent + tfString;
+					if (covCase.distance >= Double.MAX_VALUE) {
+						covInfo += " " + ANSI_RED + "UNREACHED" + ANSI_RESET;
+					} else {
+						covInfo += " " + ANSI_RED + "UNCOVERED dist=" + covCase.distance + ANSI_RESET;
+						covInfo += " Test:" + covCase.bestCoveredTestSuite.getTestSuiteID() + ":" + covCase.bestCoveredTestCase.getTestCase().getID();
+						Set<Integer> lines = covCase.bestCoveredTestCase.getLastExecutionResult().getTrace()
+								.getCoveredLines();
+						String lineStr = "["
+								+ String.join(", ", lines.stream().map(String::valueOf).collect(Collectors.toList()))
+								+ "]";
+						covInfo += " lines:" + lineStr;
+						covInfo += "\n------------------\n" + covCase.bestCoveredTestCase.toString();	// there is already an '\n' after test case
+					}
+				}
+			}
+
+			if (hasUncoveredSubBranch) {
+				hasUncoveredBranch = true;
+				uncoveredInfo += "\n" + covInfo;
+			}
+		}
+
+		if (!hasUncoveredBranch) {
+			uncoveredInfo = "Iteration " + currentIteration + ": no uncovered branches";
+		}
+		logger.error(uncoveredInfo);
+
+	}
+
+	private void reportCoverageOfCases(List<BranchCoverageTestFitness> branchGoals) {
+		String allCovInfo = "";
+		String indent = "    ";
+		allCovInfo += "Branch Coverage \nIteration " + getAge() + ":";
+
+		// Log root-branches
+		// for (BranchCoverageTestFitness tf : branchGoals) {
+		// 	if (tf.getBranch() == null) {
+		// 		allCovInfo += "\n" + tf.toString();
+		// 	}
+		// }
+
+		Map<Integer, BranchCoverageCase> info = getBranchBestCoverageInfo(branchGoals);
+		Map<Integer, Map<Boolean, BranchCoverageCase>> tfInfo = new HashMap<>();
+
+		for (Integer branchID : info.keySet()) {
+			BranchCoverageCase covCase = info.get(branchID);
+			int actualBranchId = Math.abs(branchID);
+			if (!tfInfo.containsKey(actualBranchId)) {
+				tfInfo.put(actualBranchId, new HashMap<>());
+			}
+			if (branchID >= 0) {
+				tfInfo.get(actualBranchId).put(true, covCase);
+			} else {
+				tfInfo.get(actualBranchId).put(false, covCase);
+			}
+		}
+
+		for (Integer branchID : tfInfo.keySet()) {
+			Map<Boolean, BranchCoverageCase> covTfCase = tfInfo.get(branchID);
+			if (covTfCase.isEmpty())
+				continue;
+			BranchCoverageCase covCase = covTfCase.values().iterator().next();
+			String covInfo = "";
+			covInfo += "Branch:" + branchID + " " + covCase.className + ":" + covCase.methodName
+					+ " line:" + covCase.line + " " + covCase.branch.getInstruction().toString();
+			for (Boolean tf : covTfCase.keySet()) {
+				covCase = covTfCase.get(tf);
+				String tfString = tf ? "+" : "-";
+				String ANSI_RESET = "\u001B[0m";
+				String ANSI_RED = "\u001B[31m";
+				String ANSI_GREEN = "\u001B[32m";
+				covInfo += "\n" + indent + tfString;
+
+				if (covCase.distance <= 0.0) {
+					covInfo += " " + ANSI_GREEN + "COVERED" + ANSI_RESET;
+					covInfo += " suite/" + covCase.bestCoveredTestSuite.getTestSuiteID() + "/test/" + String.format("%08d", covCase.bestCoveredTestCase.getTestCase().getID());
+				} else {
+					if (covCase.distance >= Double.MAX_VALUE) {
+						covInfo += " " + ANSI_RED + "UNREACHED" + ANSI_RESET;
+					}
+					else {
+						covInfo += " " + ANSI_RED + "UNCOVERED dist=" + covCase.distance + ANSI_RESET;
+						covInfo += " suite/" + covCase.bestCoveredTestSuite.getTestSuiteID() + "/test/" + String.format("%08d", covCase.bestCoveredTestCase.getTestCase().getID());
+					}
+				}
+			}
+			
+			allCovInfo += "\n" + covInfo;
+		}
+		logger.error(allCovInfo);
+
+		updateHistorialCoverage(info);
+	}
+
+	private void updateHistorialCoverage(Map<Integer, BranchCoverageCase> latestBranchCoverageInfo) {
+		for (Integer branchID : latestBranchCoverageInfo.keySet()) {
+			BranchCoverageCase latestCase = latestBranchCoverageInfo.get(branchID);
+			List<Pair<Integer, BranchCoverageCase>> historicalCaseTimeline = historicalCoverage.get(branchID);
+			if (historicalCaseTimeline == null) {
+				historicalCaseTimeline = new ArrayList<>();
+				historicalCoverage.put(branchID, historicalCaseTimeline);
+			}
+			if (latestCase.bestCoveredTestCase != null) {
+				if (!historicalCaseTimeline.isEmpty()) {
+					Pair<Integer, BranchCoverageCase> lastCase = historicalCaseTimeline.get(historicalCaseTimeline.size() - 1);
+					if (latestCase.distance < lastCase.getValue().distance) {
+						historicalCaseTimeline.add(new Pair<>(getAge(), latestCase));
+					}
+				} else {
+					historicalCaseTimeline.add(new Pair<>(getAge(), latestCase));
+				}
+			}
+
+		}
 	}
 
 
@@ -535,7 +715,7 @@ public class MonotonicGA<T extends Chromosome> extends GeneticAlgorithm<T> imple
 						
 						if(tf.getBranch()==null)continue;
 						
-						int branchID = tf.getBranch().getActualBranchId();
+						int branchID = tf.getBranch().getActualBranchId();	// tf consists of a branch id and a T/F value
 						boolean value = tf.getValue();
 
 						if (value) {
@@ -563,7 +743,8 @@ public class MonotonicGA<T extends Chromosome> extends GeneticAlgorithm<T> imple
 //		return null;
 	}
 
-	private Set<BranchCoverageGoal> getUncoveredBranches(T bestIndividual, List<BranchCoverageTestFitness> branchGoals) {
+	private Set<BranchCoverageGoal> getUncoveredBranches(T bestIndividual,
+			List<BranchCoverageTestFitness> branchGoals) {
 		if (bestIndividual instanceof TestSuiteChromosome) {
 
 			Set<BranchCoverageGoal> uncoveredGoals = new HashSet<>();
@@ -573,9 +754,10 @@ public class MonotonicGA<T extends Chromosome> extends GeneticAlgorithm<T> imple
 			for (ExecutionResult result : testsuite.getLastExecutionResults()) {
 				if (result != null) {
 					for (BranchCoverageTestFitness tf : branchGoals) {
-						
-						if(tf.getBranch() == null) continue;
-						
+
+						if (tf.getBranch() == null)
+							continue;
+
 						int branchID = tf.getBranch().getActualBranchId();
 						boolean value = tf.getValue();
 
@@ -598,15 +780,68 @@ public class MonotonicGA<T extends Chromosome> extends GeneticAlgorithm<T> imple
 				}
 			}
 
-//			for (BranchCoverageGoal goal : uncoveredGoals) {
-//				logger.error(goal.toString());
-//			}
-			
+			//			for (BranchCoverageGoal goal : uncoveredGoals) {
+			//				logger.error(goal.toString());
+			//			}
+
 			return uncoveredGoals;
 		}
-		
+
 		return null;
 
+	}
+	
+	private Map<Integer, BranchCoverageCase> getBranchBestCoverageInfo(List<BranchCoverageTestFitness> branchGoals) {
+		Map<Integer, BranchCoverageCase> branchCoverageInfo = new HashMap<>();
+		Map<Integer, Double> bestDistance = new HashMap<>();
+		for (BranchCoverageTestFitness tf : branchGoals) {
+			if (tf.getBranch() == null)
+				continue;
+			Branch branch = tf.getBranch();
+			int branchID = branch.getActualBranchId();
+			if (!tf.getValue())
+				branchID = -branchID;
+			branchCoverageInfo.put(branchID, new BranchCoverageCase(branch));
+			bestDistance.put(branchID, Double.MAX_VALUE);
+		}
+
+		for (int i = 0; i < population.size(); i++) {
+			Chromosome chromosome = population.get(i);
+			if (chromosome instanceof TestSuiteChromosome) {
+				TestSuiteChromosome testsuite = (TestSuiteChromosome) chromosome;
+				List<TestChromosome> testcases = testsuite.getTestChromosomes();
+				for (int j = 0; j < testcases.size(); j++) {
+					TestChromosome testcase = testcases.get(j);
+					Set<Integer> coveredTrueBranches = testcase.getLastExecutionResult().getTrace().getCoveredTrueBranches();
+					Set<Integer> coveredFalseBranches = testcase.getLastExecutionResult().getTrace().getCoveredFalseBranches();
+					String tb = coveredTrueBranches.stream()
+							.map(bID -> String.valueOf(bID))
+							.collect(Collectors.joining(", "));
+					String fb = coveredFalseBranches.stream()
+							.map(bID -> String.valueOf(bID))
+							.collect(Collectors.joining(", "));
+					logger.error(String.format("suite/%s/test/%08d: true: %s, false: %s", testsuite.getTestSuiteID(), testcase.getTestCase().getID(), "[" + tb + "]", "[" + fb + "]"));
+					ExecutionResult result = testcase.getLastExecutionResult();
+					if (result != null) {
+						for (BranchCoverageTestFitness tf : branchGoals) {
+							if (tf.getBranch() == null)
+								continue;
+							int branchID = tf.getBranch().getActualBranchId();
+							boolean value = tf.getValue();
+							int tfBranchId = value ? branchID : -branchID;
+							Double distance = value ? result.getTrace().getTrueDistances().get(branchID)
+								: result.getTrace().getFalseDistances().get(branchID);
+							if (distance != null && distance < bestDistance.get(tfBranchId)) {
+								BranchCoverageCase covCase = branchCoverageInfo.get(tfBranchId);
+								covCase.setBest(testsuite, i, testcase, j, distance);
+								bestDistance.put(tfBranchId, distance);
+							}
+						}
+					}
+				}
+			}
+		}		
+		return branchCoverageInfo;
 	}
 
 	public double getAvailabilityRatio() {
@@ -651,7 +886,11 @@ public class MonotonicGA<T extends Chromosome> extends GeneticAlgorithm<T> imple
 	private void printUncoveredBranches(Map<Integer, Integer> distributionMap,
 			List<BranchCoverageTestFitness> branchGoals) {
 		for (BranchCoverageTestFitness goal : branchGoals) {
-			int id = goal.getBranch().getActualBranchId();
+			Branch branch = goal.getBranch();
+			if (branch == null) {
+				continue;
+			}
+			int id = branch.getActualBranchId();
 			if (!goal.getBranchExpressionValue()) {
 				id = -id;
 			}

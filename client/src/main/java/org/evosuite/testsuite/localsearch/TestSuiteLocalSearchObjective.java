@@ -24,8 +24,10 @@ package org.evosuite.testsuite.localsearch;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import org.apache.commons.lang3.NotImplementedException;
 import org.evosuite.ga.Chromosome;
@@ -64,6 +66,8 @@ public class TestSuiteLocalSearchObjective implements LocalSearchObjective<TestC
 	private Map<FitnessFunction<?>, Double> lastFitness = new HashMap<>();
 
 	private Map<FitnessFunction<?>, Double> lastCoverage = new HashMap<>();
+
+	private Set<Integer> uncoveredStatements = new HashSet<>();
 
 	/**
 	 * Creates a Local Search objective for a TestCase that will be optimized
@@ -201,12 +205,12 @@ public class TestSuiteLocalSearchObjective implements LocalSearchObjective<TestC
 		double newFitness = suite.getFitness();
 
 		if (isFitnessBetter(newFitness, lastFitnessSum)) {
-			logger.info("Local search improved fitness from " + lastFitnessSum + " to " + newFitness);
+			// logger.error("Local search improved fitness from " + lastFitnessSum + " to " + newFitness);
 			updateLastFitness();
 			updateLastCoverage();
 			return -1;
 		} else if (isFitnessWorse(newFitness, lastFitnessSum)) {
-			logger.info("Local search worsened fitness from " + lastFitnessSum + " to " + newFitness);
+			// logger.error("Local search worsened fitness from " + lastFitnessSum + " to " + newFitness);
 			suite.setFitnessValues(lastFitness);
 			suite.setCoverageValues(lastCoverage);
 			return 1;
@@ -240,6 +244,19 @@ public class TestSuiteLocalSearchObjective implements LocalSearchObjective<TestC
 	@Override
 	public boolean isMaximizationObjective() {
 		return isMaximization;
+	}
+
+	public String getLastFitnessStatus() {
+		return lastFitness.entrySet().stream()
+				.map(e -> "(" + e.getKey().getClass().getSimpleName() + ":" + e.getValue() + ")")
+				.reduce((a, b) -> a + " " + b).orElse("");
+	}
+
+	public void setUncoveredStatements(Set<Integer> uncoveredStatements) {
+		this.uncoveredStatements = uncoveredStatements;
+	}
+	public Set<Integer> getUncoveredBranches() {
+		return uncoveredStatements;
 	}
 
 }

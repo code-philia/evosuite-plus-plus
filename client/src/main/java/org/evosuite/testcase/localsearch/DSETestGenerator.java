@@ -21,13 +21,16 @@ package org.evosuite.testcase.localsearch;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import org.evosuite.Properties;
+import org.evosuite.coverage.branch.BranchUtil;
 import org.evosuite.ga.localsearch.LocalSearchBudget;
 import org.evosuite.ga.localsearch.LocalSearchObjective;
 import org.evosuite.symbolic.BranchCondition;
@@ -43,11 +46,13 @@ import org.evosuite.symbolic.solver.SolverFactory;
 import org.evosuite.symbolic.solver.SolverResult;
 import org.evosuite.testcase.DefaultTestCase;
 import org.evosuite.testcase.execution.ExecutionResult;
+import org.evosuite.testcase.execution.ExecutionTrace;
 import org.evosuite.testcase.statements.Statement;
 import org.evosuite.testcase.TestCase;
 import org.evosuite.testcase.TestChromosome;
 import org.evosuite.testcase.variable.VariableReference;
 import org.evosuite.testsuite.TestSuiteChromosome;
+import org.evosuite.testsuite.localsearch.TestSuiteLocalSearchObjective;
 import org.evosuite.testcase.statements.PrimitiveStatement;
 import org.evosuite.utils.Randomness;
 import org.slf4j.Logger;
@@ -111,8 +116,18 @@ public class DSETestGenerator {
 		test.clone(); // I am not sure what is the purpose of this
 
 		DefaultTestCase clone_test_case = (DefaultTestCase) test.getTestCase().clone();
-		final PathCondition collectedPathCondition = ConcolicExecution.executeConcolic(clone_test_case);
-
+		final PathCondition collectedPathCondition = ConcolicExecution.executeConcolic(clone_test_case); // combine symbolic with concrete execution
+		
+		ExecutionTrace trace = test.getLastExecutionResult().getTrace();
+		Set<Integer> trueBranches = trace.getCoveredTrueBranches();
+		Set<Integer> falseBranches = trace.getCoveredFalseBranches();
+		Map<Integer, Integer> statementToBranches = new HashMap<>();
+		for (int i : trueBranches) {
+			statementToBranches.put(BranchUtil.getBranchBytecodeOffset(i), i);
+		}
+		for (int i : falseBranches) {
+			statementToBranches.put(BranchUtil.getBranchBytecodeOffset(i), -i);
+		}
 		logger.info("Done concolic execution");
 
 		if (collectedPathCondition.isEmpty()) {
@@ -125,7 +140,7 @@ public class DSETestGenerator {
 
 		Set<VariableReference> symbolicVariables = new HashSet<VariableReference>();
 		for (Integer position : statementIndexes) {
-			final VariableReference variableReference = test.getTestCase().getStatement(position).getReturnValue();
+			final VariableReference variableReference = test.getTestCase().getStatement(position).getReturnValue();	// the statements that returns symbolic values (used variables)
 			symbolicVariables.add(variableReference);
 		}
 
@@ -135,6 +150,7 @@ public class DSETestGenerator {
 				collectedPathCondition);
 
 		//
+		Set<Integer> uncoveredIndices = ((TestSuiteLocalSearchObjective)objective).getUncoveredBranches();
 		for (int conditionIndex = 0; conditionIndex < collectedPathCondition.size(); conditionIndex++) {
 			BranchCondition condition = collectedPathCondition.get(conditionIndex);
 
@@ -163,6 +179,19 @@ public class DSETestGenerator {
 			}
 			logger.info("Is relevant for " + symbolicVariables);
 
+			List<Integer> searchingUncoveredBranches = new ArrayList<>();
+			for (int i = 0; i < conditionIndex; ++i) {
+				BranchCondition b = collectedPathCondition.get(i);
+				Integer bID = statementToBranches.get(b.getInstructionIndex());
+				if (bID != null && ((TestSuiteLocalSearchObjective) objective).getUncoveredBranches().contains(bID)) {
+					searchingUncoveredBranches.add(bID);
+				}
+				logger.info("  " + b.getConstraint());
+			}
+			if (!searchingUncoveredBranches.isEmpty()) {
+				logger.error("Query involes branches: ", "[" + searchingUncoveredBranches.stream()
+						.map(i -> String.valueOf(i)).collect(Collectors.joining(", ")) + "]");
+			}
 			List<Constraint<?>> query = buildQuery(collectedPathCondition, conditionIndex);
 
 			logger.info("Trying to solve: ");
@@ -182,7 +211,8 @@ public class DSETestGenerator {
 
 			if (solverResult == null) {
 				logger.info("Found no result");
-
+				logger.error(
+							String.format("Test/%s/Cond/%d: No solution found.", test.getTestID(), conditionIndex + 1));
 			} else if (solverResult.isUNSAT()) {
 				logger.info("Found UNSAT result");
 				DSEStats.getInstance().reportNewUNSAT();
@@ -191,6 +221,15 @@ public class DSETestGenerator {
 				DSEStats.getInstance().reportNewSAT();
 				Map<String, Object> model = solverResult.getModel();
 				TestCase oldTest = test.getTestCase();
+				// logger.error("SAT: Tried to solve constraint " + query.get(0).toString() + " on test:\n"
+				// 		+ oldTest.toCode());
+				if (model.isEmpty()) {
+					logger.error(
+							String.format("Test/%s/Cond/%d: No solution found.", test.getTestID(), conditionIndex + 1));
+					continue;
+				}
+
+				int oldTestID = test.getTestCase().getID();
 				ExecutionResult oldResult = test.getLastExecutionResult().clone();
 				TestCase newTest = updateTest(oldTest, model);
 				logger.info("New test: " + newTest.toCode());
@@ -198,14 +237,18 @@ public class DSETestGenerator {
 				// test.clearCachedMutationResults(); // TODO Mutation
 				test.clearCachedResults();
 
+				String oldFitnessStatus = objective.getLastFitnessStatus();
 				if (objective.hasImproved(test)) {
 					DSEStats.getInstance().reportNewTestUseful();
 					logger.info("Solution improves fitness, finishing DSE");
+					String newFitnessStatus = objective.getLastFitnessStatus();
+					logger.error(String.format("Test/%08d->%08d/Cond/%d: solution found, improved: ", oldTestID, test.getTestCase().getID(), conditionIndex + 1) + oldFitnessStatus + " -> " + newFitnessStatus);
 					/* new test was created */
 					return test;
 				} else {
 					DSEStats.getInstance().reportNewTestUnuseful();
 					test.setTestCase(oldTest);
+					logger.error(String.format("Test/%08d/Cond/%d: Solution found, not improved", oldTestID, conditionIndex + 1));
 					// FIXXME: How can this be null?
 					if (oldResult != null)
 						test.setLastExecutionResult(oldResult);
@@ -418,7 +461,7 @@ public class DSETestGenerator {
 	 * @param constraints
 	 * @return
 	 */
-	private static List<Constraint<?>> reduce(List<Constraint<?>> constraints) {
+	private static List<Constraint<?>> reduce(List<Constraint<?>> constraints) {	// Only adding dependent constraints (recursively)
 
 		Constraint<?> target = constraints.get(constraints.size() - 1);
 		Set<Variable<?>> dependencies = getVariables(target);
